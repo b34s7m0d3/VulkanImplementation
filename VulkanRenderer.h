@@ -5,13 +5,16 @@
 
 #include <stdexcept>
 #include <vector>
+#include <set>
 
+#include "VulkanValidation.h"
 #include "Utilities.h"
 
 class VulkanRenderer
 {
 public:
 	VulkanRenderer();
+
 	int init(GLFWwindow * newWindow);
 	void cleanup();
 
@@ -23,6 +26,7 @@ private:
 
 	// vulkan components
 	VkInstance instance;
+	VkDebugUtilsMessengerEXT debugMessenger;
 	struct {
 		VkPhysicalDevice physicalDevice;
 		VkDevice logicalDevice;
@@ -32,7 +36,9 @@ private:
 	// vulkan functions
 	// create functions
 	void createInstance();
+	void createDebugMessenger();
 	void createLogicalDevice();
+	
 
 	// Get functions
 	void getPhysicalDevice();
@@ -40,6 +46,8 @@ private:
 	// support functions
 	// -- checker functions
 	bool checkInstanceExtensionSupport(std::vector<const char*> * checkExtensions);
+	bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+	bool checkVlaidationLayerSupport();
 	bool checkDeviceSuitable(VkPhysicalDevice device);
 
 	// -- getter functions
