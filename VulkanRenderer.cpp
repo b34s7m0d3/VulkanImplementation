@@ -104,7 +104,7 @@ void VulkanRenderer::createInstance()
 	}
 
 	if (enableValidationLayers) {
-		instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+		instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
 	// check instance extensions supported
 	if (!checkInstanceExtensionSupport(&instanceExtensions)) {
@@ -112,9 +112,10 @@ void VulkanRenderer::createInstance()
 		throw std::runtime_error("VkInstance does not uspport required extensions!");
 	}
 
+	
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size());
 	createInfo.ppEnabledExtensionNames = instanceExtensions.data();
-
+	
 	//VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 
 	if (enableValidationLayers) {
