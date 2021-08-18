@@ -73,7 +73,7 @@ VulkanRenderer::~VulkanRenderer()
 void VulkanRenderer::createInstance()
 {
 
-	if (enableValidationLayers && !checkVlaidationLayerSupport()) {
+	if (enableValidationLayers && !checkValidationLayerSupport()) {
 		throw std::runtime_error("validation layers requested but not available!");
 	}
 
@@ -142,7 +142,7 @@ void VulkanRenderer::createInstance()
 	// create instance
 	VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
 
-	if (vkCreateInstance (&createInfo, nullptr, &instance) != VK_SUCCESS) {
+	if (result != VK_SUCCESS) {
 		
 		throw std::runtime_error("failed to create a vulkan instance");
 	}
@@ -225,11 +225,11 @@ void VulkanRenderer::createSurface() {
 
 void VulkanRenderer::createSwapChain(){
 	// get swapchain details so we can pick best settings
-	SwapChanDetails swapChainDetails = getSwapChainDetails(mainDevice.physicalDevice);
+	SwapChainDetails swapChainDetails = getSwapChainDetails(mainDevice.physicalDevice);
 
 	// find optimal surface values for our swap chain
-	VkSurfaceFormatKHR surfaceformat = chooseBestSurfaceFormat(swapChainDetails.formats);
-	VkPresentModeKHR presentmode = chooseBestPresentationMode(swapChainDetails.presentationMode);
+	VkSurfaceFormatKHR surfaceFormat = chooseBestSurfaceFormat(swapChainDetails.formats);
+	VkPresentModeKHR presentMode = chooseBestPresentationMode(swapChainDetails.presentationModes);
 	VkExtent2D extent = chooseSwapExtent(swapChainDetails.surfaceCapabilities);
 
 	// how many images are in the swap chain? get 1 more than the minimum to allow triple buffering
@@ -245,9 +245,9 @@ void VulkanRenderer::createSwapChain(){
 	VkSwapchainCreateInfoKHR swapChainCreateInfo = {};
 	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	swapChainCreateInfo.surface = surface;														// swap chain surface
-	swapChainCreateInfo.imageFormat = surfaceformat.format;										// swap chain format
-	swapChainCreateInfo.imageColorSpace = surfaceformat.colorSpace;								// swap chain color space
-	swapChainCreateInfo.presentMode = presentmode;												// swap chain presentation mode
+	swapChainCreateInfo.imageFormat = surfaceFormat.format;										// swap chain format
+	swapChainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;								// swap chain color space
+	swapChainCreateInfo.presentMode = presentMode;												// swap chain presentation mode
 	swapChainCreateInfo.imageExtent = extent;													// swap chain image extent
 	swapChainCreateInfo.minImageCount = imageCount;												// minimum images in swapchain
 	swapChainCreateInfo.imageArrayLayers = 1;													// number of layers for each image in chain
@@ -261,13 +261,13 @@ void VulkanRenderer::createSwapChain(){
 
 	// if graphics and presentation families are different, then swapchain must let images be shared between families
 
-	if (indices.graphicsFamily != indices.presentationFamily) {
+			// queues to share between
+	uint32_t queueFamilyIndices[] = {
+		(uint32_t)indices.graphicsFamily,
+		(uint32_t)indices.presentationFamily
+	};
 
-		// queues to share between
-		uint32_t queueFamilyIndices[] = {
-			(uint32_t)indices.graphicsFamily,
-			(uint32_t)indices.presentationFamily
-		};
+	if (indices.graphicsFamily != indices.presentationFamily) {
 
 		swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;		// image share handling
 		swapChainCreateInfo.queueFamilyIndexCount = 2;							// number of ques to share images between
@@ -291,7 +291,7 @@ void VulkanRenderer::createSwapChain(){
 	}
 
 	// store for later reference
-	swapChainImageFormat = surfaceformat.format;
+	swapChainImageFormat = surfaceFormat.format;
 	swapChainExtent = extent;
 
 	// get swapchain images (first count, then values)
@@ -353,7 +353,7 @@ bool VulkanRenderer::checkInstanceExtensionSupport(std::vector<const char*>* che
 		bool hasExtension = false;
 		for (const auto &extension : extensions) {
 
-			if (strcmp(checkExtension, extension.extensionName)) {
+			if (strcmp(checkExtension, extension.extensionName)==0) {
 				
 				hasExtension = true;
 				break;
@@ -406,7 +406,7 @@ bool VulkanRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device)
 }
 
 
-bool VulkanRenderer::checkVlaidationLayerSupport() {
+bool VulkanRenderer::checkValidationLayerSupport() {
 	uint32_t layerCount;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
@@ -450,10 +450,10 @@ bool VulkanRenderer::checkDeviceSuitable(VkPhysicalDevice device)
 	bool swapChainValid = false;
 
 	if (extensionsSupported) {
-		SwapChanDetails swapChainDetails = getSwapChainDetails(device);
-		swapChainValid = !swapChainDetails.presentationMode.empty() && !swapChainDetails.formats.empty();
+		SwapChainDetails swapChainDetails = getSwapChainDetails(device);
+		swapChainValid = !swapChainDetails.presentationModes.empty() && !swapChainDetails.formats.empty();
 	}
-	return indices.isVaild() && extensionsSupported && swapChainValid;
+	return indices.isValid() && extensionsSupported && swapChainValid;
 }
 
 
@@ -489,7 +489,7 @@ QueueFamilyIndices VulkanRenderer::getQueueFamilies(VkPhysicalDevice device)
 		}
 
 		// check if queue family indices are in a valid state, stop searching if so
-		if (indices.isVaild()) {
+		if (indices.isValid()) {
 			break;
 		}
 
@@ -498,9 +498,9 @@ QueueFamilyIndices VulkanRenderer::getQueueFamilies(VkPhysicalDevice device)
 	return indices;
 }
 
-SwapChanDetails VulkanRenderer::getSwapChainDetails(VkPhysicalDevice device){
+SwapChainDetails VulkanRenderer::getSwapChainDetails(VkPhysicalDevice device){
 
-	SwapChanDetails swapChainDetails;
+	SwapChainDetails swapChainDetails;
 	// -- CAPABILITIES--
 	// get the surface capabilities for the given surface on the given physical device
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &swapChainDetails.surfaceCapabilities);
@@ -511,7 +511,7 @@ SwapChanDetails VulkanRenderer::getSwapChainDetails(VkPhysicalDevice device){
 
 	// if formats returned, get list of formats
 	if (formatCount != 0) {
-		swapChainDetails.formats.reserve(formatCount);
+		swapChainDetails.formats.resize(formatCount);
 		vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, swapChainDetails.formats.data());
 	}
 
@@ -521,8 +521,8 @@ SwapChanDetails VulkanRenderer::getSwapChainDetails(VkPhysicalDevice device){
 
 	// if presentation modes returned, get list of presentation modes
 	if (presentationCount != 0) {
-		swapChainDetails.presentationMode.reserve(presentationCount);
-		vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentationCount, swapChainDetails.presentationMode.data());
+		swapChainDetails.presentationModes.resize(presentationCount);
+		vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentationCount, swapChainDetails.presentationModes.data());
 	}
 
 	return swapChainDetails;
@@ -613,7 +613,7 @@ VkImageView VulkanRenderer::createImageView(VkImage image, VkFormat format, VkIm
 	VkResult result = vkCreateImageView(mainDevice.logicalDevice, &viewCreateInfo, nullptr, &imageView);
 
 	if (result != VK_SUCCESS) {
-		std::runtime_error("Failed to create an image view!");
+		throw std::runtime_error("Failed to create an image view!");
 	}
 
 	return imageView;

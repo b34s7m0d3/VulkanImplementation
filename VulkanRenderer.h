@@ -60,12 +60,12 @@ private:
 	// -- checker functions
 	bool checkInstanceExtensionSupport(std::vector<const char*> * checkExtensions);
 	bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-	bool checkVlaidationLayerSupport();
+	bool checkValidationLayerSupport();
 	bool checkDeviceSuitable(VkPhysicalDevice device);
 
 	// -- getter functions
 	QueueFamilyIndices getQueueFamilies(VkPhysicalDevice device);
-	SwapChanDetails getSwapChainDetails(VkPhysicalDevice device);
+	SwapChainDetails getSwapChainDetails(VkPhysicalDevice device);
 
 	// -- Choose functions
 	VkSurfaceFormatKHR chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats);
