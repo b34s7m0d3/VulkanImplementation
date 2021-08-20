@@ -7,6 +7,7 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <array>
 
 #include "VulkanValidation.h"
 #include "Utilities.h"
@@ -39,6 +40,12 @@ private:
 	VkQueue presentationQueue;
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapchain;
+	std::vector<SwapChainImage> swapChainImages;
+
+	// - Pipeline
+	VkPipeline graphicsPipeline;
+	VkPipelineLayout pipelineLayout;
+	VkRenderPass renderPass;
 
 	// - Utility
 	VkFormat swapChainImageFormat;
@@ -51,7 +58,8 @@ private:
 	void createLogicalDevice();
 	void createSurface();
 	void createSwapChain();
-	std::vector<SwapChainImage> swapChainImages;
+	void createRenderPass();
+	void createGraphicsPipeline();
 
 	// Get functions
 	void getPhysicalDevice();
@@ -74,5 +82,6 @@ private:
 
 	// -- Create functions
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectflags);
+	VkShaderModule createShaderModule(const std::vector<char> &code);
 };
 
