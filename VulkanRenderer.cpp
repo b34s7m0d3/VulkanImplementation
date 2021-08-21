@@ -30,6 +30,7 @@ int VulkanRenderer::init(GLFWwindow * newWindow)
 		createCommandPool();
 		createCommandBuffers();
 		recordCommands();
+		createSynchronization();
 	}
 	catch (const std::runtime_error &e)
 	{
@@ -41,8 +42,72 @@ int VulkanRenderer::init(GLFWwindow * newWindow)
 	return 0;
 }
 
+void VulkanRenderer::draw(){
+
+	// -- GET NEXT IMAGE --
+	// wait for given fence to signal (open) from last drawing call 
+	vkWaitForFences(mainDevice.logicalDevice, 1, &drawFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
+	// manually reset (close) fences
+	vkResetFences(mainDevice.logicalDevice, 1, &drawFences[currentFrame]);
+
+	// get index of next image to draw to and signal semaphore when read to draw to
+	uint32_t imageIndex;
+	vkAcquireNextImageKHR(mainDevice.logicalDevice, swapchain, std::numeric_limits<uint64_t>::max(), imageAvailable[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+	// -- SUBMIT COMMAND BUFFER TO RENDER --
+	// queue submission infomration
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = 1;								// number of semaphores to wait on
+	submitInfo.pWaitSemaphores = &imageAvailable[currentFrame];		// list of semaphores to wait on
+	VkPipelineStageFlags waitStages[] = {
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+	};
+	submitInfo.pWaitDstStageMask = waitStages;						// stages to check semaphores at
+	submitInfo.commandBufferCount = 1;								// number of command buffers to submit
+	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];		// command buffer to submit
+	submitInfo.signalSemaphoreCount = 1;							// number of semaphores to signal
+	submitInfo.pSignalSemaphores = &renderFinished[currentFrame];	// semaphores to signal when command buffer finishes
+	
+	// submit command buffer to queue
+	VkResult result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFences[currentFrame]);
+
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("failed to submit command buffer to Queue");
+	}
+
+	// -- PRESENT RENDERED IMAGE TO SCREEN --
+	VkPresentInfoKHR presentInfo = {};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;								// number of semaphores to wait on
+	presentInfo.pWaitSemaphores = &renderFinished[currentFrame];	// semaphore to wait on
+	presentInfo.swapchainCount = 1;									// number of swapchains to present to
+	presentInfo.pSwapchains = &swapchain;							// swapcahins to present images to
+	presentInfo.pImageIndices = &imageIndex;						// index of images in swapchains to present
+
+	// present image
+	result = vkQueuePresentKHR(presentationQueue, &presentInfo);
+
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("failed to present rendered image");
+	}
+	
+	// get next frame (use % MAX_FRAME_DRAWS to keep value below MAX_FRAME_DRAWS)
+	currentFrame = (currentFrame + 1) % MAX_FRAME_DRAWS;
+}
+
 void VulkanRenderer::cleanup()
 {
+	// wait until no actions being run on the device before destroying it
+	vkDeviceWaitIdle(mainDevice.logicalDevice);
+
+	for (size_t i = 0; i < MAX_FRAME_DRAWS; i++)
+	{
+		vkDestroySemaphore(mainDevice.logicalDevice, renderFinished[i], nullptr);
+		vkDestroySemaphore(mainDevice.logicalDevice, imageAvailable[i], nullptr);
+		vkDestroyFence(mainDevice.logicalDevice,drawFences[i],nullptr);
+	}
+	
 	vkDestroyCommandPool(mainDevice.logicalDevice, graphicsCommandPool, nullptr);
 	for (auto framebuffer : swapChainFrameBuffers) {
 		vkDestroyFramebuffer(mainDevice.logicalDevice, framebuffer, nullptr);
@@ -138,7 +203,7 @@ void VulkanRenderer::createInstance()
 	{
 		createInfo.enabledLayerCount = 0;
 
-		createInfo.pNext = nullptr;
+		createInfo.ppEnabledLayerNames = nullptr;
 	}
 
 	// create instance
@@ -162,7 +227,9 @@ void VulkanRenderer::createDebugMessenger() {
 	createInfo.pfnUserCallback = debugCallback;
 	//populateDebugMEssengerCreateInfo(createInfo);
 
-	if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+	VkResult result = CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger);
+
+	if (result != VK_SUCCESS) {
 		throw std::runtime_error("failed to set up debug messenger!");
 	}
 }
@@ -263,13 +330,15 @@ void VulkanRenderer::createSwapChain(){
 
 	// if graphics and presentation families are different, then swapchain must let images be shared between families
 
-			// queues to share between
-	uint32_t queueFamilyIndices[] = {
-		(uint32_t)indices.graphicsFamily,
-		(uint32_t)indices.presentationFamily
-	};
+	
 
 	if (indices.graphicsFamily != indices.presentationFamily) {
+
+		// queues to share between
+		uint32_t queueFamilyIndices[] = {
+			(uint32_t)indices.graphicsFamily,
+			(uint32_t)indices.presentationFamily
+		};
 
 		swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;		// image share handling
 		swapChainCreateInfo.queueFamilyIndexCount = 2;							// number of ques to share images between
@@ -470,7 +539,7 @@ void VulkanRenderer::createGraphicsPipeline() {
 	rasterizerCreateInfo.depthClampEnable = VK_FALSE;				// change if fragments beyond near or far plane are clipped (default) or clamped to plane (needs gpu feature if other setting)
 	rasterizerCreateInfo.rasterizerDiscardEnable = VK_FALSE;		// wether to discard data and sckip rasterizer, never creates fragments, only for pipeline without framebuffer
 	rasterizerCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;		// how to handle filling points between vertices (needs gpu feature if other setting)
-	rasterizerCreateInfo.lineWidth = 1;								// how thic lines should be when drawn (needs gpu feature if other setting)
+	rasterizerCreateInfo.lineWidth = 1.0f;								// how thic lines should be when drawn (needs gpu feature if other setting)
 	rasterizerCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;			// which face of a tri to cull
 	rasterizerCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;		// winding to determine which side is front
 	rasterizerCreateInfo.depthBiasEnable = VK_FALSE;				// whether to add depth bias to fragments (good for stopping "shadow_acne" in shadow mapping
@@ -630,12 +699,36 @@ void VulkanRenderer::createCommandBuffers(){
 
 }
 
+void VulkanRenderer::createSynchronization() {
+
+	imageAvailable.resize(MAX_FRAME_DRAWS);
+	renderFinished.resize(MAX_FRAME_DRAWS);
+	drawFences.resize(MAX_FRAME_DRAWS);
+	// Semaphore creation information
+	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	// fence creation information
+	VkFenceCreateInfo fenceCreateInfo = {};
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	for (size_t i = 0; i < MAX_FRAME_DRAWS; i++) {
+
+		if (vkCreateSemaphore(mainDevice.logicalDevice, &semaphoreCreateInfo, nullptr, &imageAvailable[i]) != VK_SUCCESS || 
+			vkCreateSemaphore(mainDevice.logicalDevice, &semaphoreCreateInfo, nullptr, &renderFinished[i]) != VK_SUCCESS || 
+			vkCreateFence(mainDevice.logicalDevice, &fenceCreateInfo, nullptr, &drawFences[i]) != VK_SUCCESS) {
+
+			throw std::runtime_error("failed to create a semaphore and/or fence");
+		}
+	}
+}
+
 void VulkanRenderer::recordCommands() {
 
 	// information about how to begin each command buffer
 	VkCommandBufferBeginInfo bufferBeginInfo = {};
 	bufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	bufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;		// buffer can be resubmitted when it has already been submitted and is avaiting execution
 
 	// information about how to begin a  render pass (only needed for graphical application)
 	VkRenderPassBeginInfo renderPassBeginInfo = {};
@@ -644,7 +737,7 @@ void VulkanRenderer::recordCommands() {
 	renderPassBeginInfo.renderArea.offset = { 0,0 };							// start point of render pass in pixels
 	renderPassBeginInfo.renderArea.extent = swapChainExtent;					// size of region to run render pass on (starting at offset)
 	VkClearValue clearValues[] = {
-		(0.0f, 0.65f, 0.4f, 1.0f)
+		{0.6f, 0.65f, 0.4f, 1.0f}
 	};
 	renderPassBeginInfo.pClearValues = clearValues;								// list of clear values (TODO depth attachment clear value)
 	renderPassBeginInfo.clearValueCount = 1;	
@@ -917,7 +1010,7 @@ VkSurfaceFormatKHR VulkanRenderer::chooseBestSurfaceFormat(const std::vector<VkS
 	return formats[0];
 }
 
-VkPresentModeKHR VulkanRenderer::chooseBestPresentationMode(const std::vector<VkPresentModeKHR>& presentationModes){
+VkPresentModeKHR VulkanRenderer::chooseBestPresentationMode(const std::vector<VkPresentModeKHR> presentationModes){
 
 	// look for mailbox presentation mode
 	for (const auto &presentationMode : presentationModes) {
