@@ -23,6 +23,19 @@ int VulkanRenderer::init(GLFWwindow * newWindow)
 		createSurface();
 		getPhysicalDevice();
 		createLogicalDevice();
+
+		// create a mesh
+		std::vector<Vertex> meshVertices = {
+			{{0.4, -0.4, 0.0}, {1.0f, 0.0f, 0.0f}},
+			{{0.4, 0.4, 0.0}, {0.0f, 1.0f, 0.0f}},
+			{{-0.4, 0.4, 0.0}, {0.0f, 0.0f, 1.0f}},
+
+			{{-0.4, 0.4, 0.0} , {0.0f, 0.0f, 1.0f}},
+			{{-0.4, -0.4, 0.0}, {1.0f, 1.0f, 0.0f}},
+			{{0.4, -0.4, 0.0}, {1.0f, 0.0f, 0.0f}}
+		};
+		firstMesh = Mesh(mainDevice.physicalDevice, mainDevice.logicalDevice, &meshVertices);
+
 		createSwapChain();
 		createRenderPass();
 		createGraphicsPipeline();
@@ -100,6 +113,8 @@ void VulkanRenderer::cleanup()
 {
 	// wait until no actions being run on the device before destroying it
 	vkDeviceWaitIdle(mainDevice.logicalDevice);
+
+	firstMesh.destroyVertexBuffer();
 
 	for (size_t i = 0; i < MAX_FRAME_DRAWS; i++)
 	{
@@ -485,13 +500,36 @@ void VulkanRenderer::createGraphicsPipeline() {
 	// graphics pipeline creation info requires an array of shader stage creates
 	VkPipelineShaderStageCreateInfo shaderStages[] = { vertexShaderCreateInfo, fragmentShaderCreateInfo };
 
+	// how the data for a single vertex (including info like position, color, normals etc) isas a whole
+	VkVertexInputBindingDescription bindingDescription = {};
+	bindingDescription.binding = 0;									// can bind multiple source of data. this defines which one
+	bindingDescription.stride = sizeof(Vertex);						// size of a single vertex object
+	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;		// how to move between data after each vertex
+																	// VK_VERTEX_INPUT_RATE_VERTEX		move onto next vertex
+																	// VK_VERTEX_INPUT_RATE_INSTANCE	move to a vertex for the next instance
+
+	// how the data for an attribute is defined within a vertex
+	std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions;
+
+	// position attribute
+	attributeDescriptions[0].binding = 0;							// which binding the data is at (should be the same as above
+	attributeDescriptions[0].location = 0;							// location in shader where data will be read from
+	attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;	// format the data will be ( helps define size of data)
+	attributeDescriptions[0].offset = offsetof(Vertex, pos);			// where this attribute is defined in the data for single vertex
+
+	// color attribute
+	attributeDescriptions[1].binding = 0;							
+	attributeDescriptions[1].location = 1;							
+	attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;	
+	attributeDescriptions[1].offset = offsetof(Vertex, col);		
+
 	// -- VERTEX INPUT --
 	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo = {};
 	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
-	vertexInputCreateInfo.pVertexBindingDescriptions = nullptr;			// list of vertex binding descriptions (data spacing, stride info)
-	vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
-	vertexInputCreateInfo.pVertexAttributeDescriptions = nullptr;		// list of vertex attribute descriptions (data format and where to bind to or from)
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;									// list of vertex binding descriptions (data spacing, stride info)
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();						// list of vertex attribute descriptions (data format and where to bind to or from)
 
 	// -- INPUT ASSEMBLY --
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
@@ -759,8 +797,12 @@ void VulkanRenderer::recordCommands() {
 		// bind pipeline to be used in render pass
 		vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-		// execute our pipeline
-		vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+		VkBuffer vertexBuffers[] = { firstMesh.getVertexBuffer() };					// buffers to bind
+		VkDeviceSize offsets[] = { 0 };												// offsets into buffers being bound
+		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);	// command to bind vertex buffer before drawing with them
+
+		// execute pipeline
+		vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(firstMesh.getVertexCount()), 1, 0, 0);
 
 		// end render pass
 		vkCmdEndRenderPass(commandBuffers[i]);

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 
+#include "Mesh.h"
 #include "VulkanValidation.h"
 #include "Utilities.h"
 
@@ -30,6 +31,9 @@ private:
 	GLFWwindow * window;
 
 	int currentFrame = 0;
+
+	// scene objects
+	Mesh firstMesh;
 
 	// vulkan components
 	// - Main
