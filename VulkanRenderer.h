@@ -33,7 +33,7 @@ private:
 	int currentFrame = 0;
 
 	// scene objects
-	Mesh firstMesh;
+	std::vector<Mesh> meshList;
 
 	// vulkan components
 	// - Main
